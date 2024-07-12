@@ -49,7 +49,6 @@ class run_analysis:
     def detect_faces(self, frame):
 
         analysis_results = DeepFace.analyze(frame, detector_backend=BACKENDS[4], enforce_detection=True, actions=['emotion'], silent=True)
-        df = pd.DataFrame()
         # store the detected faces in a directory for further processing
         for res in analysis_results:
 
@@ -112,8 +111,12 @@ class run_analysis:
             if(self.frame_count % FRAME_WINDOW != 0):
                 continue
 
-            self.detect_faces(frame)
-            cv2.imshow("Frame", frame)
+            try:
+                self.detect_faces(frame)
+                cv2.imshow("Frame", frame)
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
             
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break
@@ -173,7 +176,7 @@ if __name__=="__main__":
             os.remove(f"{DB_PATH}/{file}")
 
     new_analysis = run_analysis()
-    new_analysis.process_video('./videos/test4.mp4')
+    new_analysis.process_video('./videos/sample.mp4')
     new_analysis.export_results()
     plot_emotion_evolution('results.csv')
 
