@@ -179,11 +179,6 @@ def plot_emotion_evolution(data_path):
 if __name__=="__main__":
 
     db_path = 'faces_db'
-    metrics = METRICS_LIST[2]
-    frame_window = 10
-    facial_tracker_window = 30
-    backend = BACKENDS[3]
-    model = MODELS[2]
 
     if not os.path.exists(db_path):
         os.makedirs(db_path)
@@ -198,7 +193,7 @@ if __name__=="__main__":
         backend_analyze = BACKENDS[4], 
         backend_find = BACKENDS[0], 
         model_find = MODELS[2], 
-        db_path='faces_db')
+        db_path=db_path)
     new_analysis.process_video('../videos/sample2.mp4')
     new_analysis.export_results()
     plot_emotion_evolution('results.csv')
