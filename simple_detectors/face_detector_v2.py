@@ -11,12 +11,14 @@ BACKENDS = [
   'ssd', 
   'dlib', 
   'mtcnn', 
+  'fastmtcnn',
   'retinaface', 
   'mediapipe',
   'yolov8',
   'yunet',
-  'fastmtcnn',
+  'centerface',
 ]
+
 
 MODELS = [
   "VGG-Face", 
@@ -31,16 +33,19 @@ MODELS = [
   "GhostFaceNet",
 ]
 
-METRICS = ["cosine", "euclidean", "euclidean_l2"]
-
-FRAME_WINDOW = 10
-FACIAL_TRACKER_WINDOW = 60
-DB_PATH = 'faces_db'
+METRICS_LIST = ["cosine", "euclidean", "euclidean_l2"]
 
 
 class run_analysis:
 
-    def __init__(self):
+    def __init__(self, distance_metric, frame_window ,facial_tracker_window, backend_analyze, backend_find, model_find, db_path):
+        self.distance_metric = distance_metric
+        self.frame_window = frame_window
+        self.facial_tracker_window = facial_tracker_window
+        self.backend_analyze = backend_analyze
+        self.backend_find = backend_find
+        self.model_find = model_find
+        self.db_path = db_path
         self.face_counter = 0
         self.frame_count = 0
         self.faces_iter = {}
@@ -48,7 +53,7 @@ class run_analysis:
 
     def detect_faces(self, frame):
 
-        analysis_results = DeepFace.analyze(frame, detector_backend=BACKENDS[4], enforce_detection=True, actions=['emotion'], silent=True)
+        analysis_results = DeepFace.analyze(frame, detector_backend=self.backend_analyze, enforce_detection=True, actions=['emotion'], silent=True)
         # store the detected faces in a directory for further processing
         for res in analysis_results:
 
@@ -62,22 +67,28 @@ class run_analysis:
             person = 'unknown'
 
             #face recognition
-            if any(file for file in os.listdir(DB_PATH) if not file.endswith('.pkl')):
-                dfs = DeepFace.find(face_img, db_path = DB_PATH, distance_metric = METRICS[2], silent=True, enforce_detection=False)
+            if any(file for file in os.listdir(self.db_path) if not file.endswith('.pkl')):
+                dfs = DeepFace.find(face_img, 
+                                    db_path = self.db_path,  
+                                    distance_metric = self.distance_metric, 
+                                    model_name=self.model_find, 
+                                    detector_backend=self.backend_find, 
+                                    silent=True, 
+                                    enforce_detection=False)
                 if(dfs[0].shape[0] == 0):
-                    cv2.imwrite(f"{DB_PATH}/{self.face_counter}.jpg", face_img)
+                    cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
                     person = f"student_{self.face_counter}"
                     self.faces_iter[person] = {'iter': 1}
                     self.face_counter+=1
                 else:
                     student_number = dfs[0].iloc[0].identity.split('/')[-1].replace('.jpg', '').split('_')[0]
                     person =f"student_{student_number}"
-                    if (self.frame_count % FACIAL_TRACKER_WINDOW == 0):
-                        cv2.imwrite(f"{DB_PATH}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
+                    if (self.frame_count % self.facial_tracker_window == 0):
+                        cv2.imwrite(f"{self.db_path}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
                         self.faces_iter[person]['iter']+=1
                     
             else:
-                cv2.imwrite(f"{DB_PATH}/{self.face_counter}.jpg", face_img)
+                cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
                 person = f"student_{self.face_counter}"
                 self.faces_iter[person] = {'iter': 1}
                 self.face_counter+=1
@@ -93,8 +104,6 @@ class run_analysis:
 
     # Detect and track faces
     def process_video(self, video_path):
-        global FRAME_COUNT
-
         cap = cv2.VideoCapture(video_path)
         total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -108,7 +117,7 @@ class run_analysis:
             # Increment frame_count
             self.frame_count += 1
             
-            if(self.frame_count % FRAME_WINDOW != 0):
+            if(self.frame_count % self.frame_window != 0):
                 continue
 
             try:
@@ -169,14 +178,28 @@ def plot_emotion_evolution(data_path):
 
 if __name__=="__main__":
 
-    if not os.path.exists(DB_PATH):
-        os.makedirs(DB_PATH)
-    else:
-        for file in os.listdir(DB_PATH):
-            os.remove(f"{DB_PATH}/{file}")
+    db_path = 'faces_db'
+    metrics = METRICS_LIST[2]
+    frame_window = 10
+    facial_tracker_window = 30
+    backend = BACKENDS[3]
+    model = MODELS[2]
 
-    new_analysis = run_analysis()
-    new_analysis.process_video('./videos/sample.mp4')
+    if not os.path.exists(db_path):
+        os.makedirs(db_path)
+    else:
+        for file in os.listdir(db_path):
+            os.remove(f"{db_path}/{file}")
+
+    new_analysis = run_analysis(
+        distance_metric = METRICS_LIST[1], 
+        frame_window=10,
+        facial_tracker_window = 20, 
+        backend_analyze = BACKENDS[4], 
+        backend_find = BACKENDS[0], 
+        model_find = MODELS[2], 
+        db_path='faces_db')
+    new_analysis.process_video('../videos/sample2.mp4')
     new_analysis.export_results()
     plot_emotion_evolution('results.csv')
 

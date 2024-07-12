@@ -1,6 +1,8 @@
 from deepface import DeepFace
 import cv2
 
+# TODO add performance check and choose the best backend
+
 backends = [
   'opencv', 
   'ssd', 
@@ -49,9 +51,3 @@ cv2.imwrite(output_path, img)
 cv2.imshow('Result', img)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-
-# #face detection and alignment
-# face_objs = DeepFace.extract_faces(img_path = "img.jpg", 
-#         target_size = (224, 224), 
-#         detector_backend = backends[4]
-# )
