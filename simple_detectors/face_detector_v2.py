@@ -5,6 +5,7 @@ import cv2
 import os
 import matplotlib.pyplot as plt
 import ast
+from time import sleep
 
 BACKENDS = [
   'opencv', 
@@ -34,7 +35,6 @@ MODELS = [
 ]
 
 METRICS_LIST = ["cosine", "euclidean", "euclidean_l2"]
-
 
 class run_analysis:
 
@@ -99,44 +99,46 @@ class run_analysis:
             cv2.putText(frame, person, (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
 
             self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region']]
-
-
-
     # Detect and track faces
     def process_video(self, video_path):
+        total_frame_count = 0;
         cap = cv2.VideoCapture(video_path)
-        total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        while(cap.isOpened()):
+            total_frame_count += 1
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        pbar = tqdm(total = total_frame_count+1, position=0, leave=True, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', ncols=100, desc="Processing video", unit="frames")
+        cap = cv2.VideoCapture(video_path)
+        pbar = tqdm(total = total_frame_count, position=0, leave=True, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', ncols=100, desc="Processing video", unit="frames")
+
         while(cap.isOpened()):
             pbar.update(1)
             ret, frame = cap.read()
             if not ret:
                 break
-
             # Increment frame_count
             self.frame_count += 1
+            if(self.frame_count % self.frame_window == 0):
+                try:
+                    self.detect_faces(frame)
+                    cv2.imshow("Frame", frame)
+                except Exception as e:
+                    print(f"Error: {e}")
+                    continue
             
-            if(self.frame_count % self.frame_window != 0):
-                continue
-
-            try:
-                self.detect_faces(frame)
-                cv2.imshow("Frame", frame)
-            except Exception as e:
-                print(f"Error: {e}")
-                continue
-            
-            if cv2.waitKey(25) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         
         cap.release()
+        pbar.close()
         cv2.destroyAllWindows()
 
     def export_results(self):
         self.results.to_csv('results.csv', index=False)
-
     # Convert string representation of dictionary to dictionary
+
+
 def parse_dict(s):
     try:
         return ast.literal_eval(s)
