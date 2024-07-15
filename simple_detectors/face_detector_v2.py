@@ -5,15 +5,16 @@ import cv2
 import os
 import matplotlib.pyplot as plt
 import ast
-from time import sleep
+from sixdrepnet import SixDRepNet
+from google.colab.patches import cv2_imshow
 
 BACKENDS = [
-  'opencv', 
-  'ssd', 
-  'dlib', 
-  'mtcnn', 
+  'opencv',
+  'ssd',
+  'dlib',
+  'mtcnn',
   'fastmtcnn',
-  'retinaface', 
+  'retinaface',
   'mediapipe',
   'yolov8',
   'yunet',
@@ -22,14 +23,14 @@ BACKENDS = [
 
 
 MODELS = [
-  "VGG-Face", 
-  "Facenet", 
-  "Facenet512", 
-  "OpenFace", 
-  "DeepFace", 
-  "DeepID", 
-  "ArcFace", 
-  "Dlib", 
+  "VGG-Face",
+  "Facenet",
+  "Facenet512",
+  "OpenFace",
+  "DeepFace",
+  "DeepID",
+  "ArcFace",
+  "Dlib",
   "SFace",
   "GhostFaceNet",
 ]
@@ -51,6 +52,8 @@ class run_analysis:
         self.faces_iter = {}
         self.results = pd.DataFrame(columns=['student_id', 'Frame', 'Emotions', 'Main Emotion', 'Face Position'])
 
+        self.head_pose_model = SixDRepNet()
+
     def detect_faces(self, frame):
 
         analysis_results = DeepFace.analyze(frame, detector_backend=self.backend_analyze, enforce_detection=True, actions=['emotion'], silent=True)
@@ -68,12 +71,12 @@ class run_analysis:
 
             #face recognition
             if any(file for file in os.listdir(self.db_path) if not file.endswith('.pkl')):
-                dfs = DeepFace.find(face_img, 
-                                    db_path = self.db_path,  
-                                    distance_metric = self.distance_metric, 
-                                    model_name=self.model_find, 
-                                    detector_backend=self.backend_find, 
-                                    silent=True, 
+                dfs = DeepFace.find(face_img,
+                                    db_path = self.db_path,
+                                    distance_metric = self.distance_metric,
+                                    model_name=self.model_find,
+                                    detector_backend=self.backend_find,
+                                    silent=True,
                                     enforce_detection=False)
                 if(dfs[0].shape[0] == 0):
                     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
@@ -86,19 +89,53 @@ class run_analysis:
                     if (self.frame_count % self.facial_tracker_window == 0):
                         cv2.imwrite(f"{self.db_path}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
                         self.faces_iter[person]['iter']+=1
-                    
+
             else:
                 cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
                 person = f"student_{self.face_counter}"
                 self.faces_iter[person] = {'iter': 1}
                 self.face_counter+=1
-                
+
+            
+            head_pose_result = self.extract_head_pose(face_img, verbose=True)
+
             # Analyzing the emotion of the cropped face image
             cv2.rectangle(frame, (x, y), (x+w, y+h), (240, 0, 0), 2)
             cv2.putText(frame, res['dominant_emotion'], (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
             cv2.putText(frame, person, (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
+            cv2.putText(frame, head_pose_result[0], (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
 
-            self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region']]
+            self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region'], head_pose_result]
+
+    def extract_head_pose(self, face_img, verbose=False):
+        pitch, yaw, roll = self.head_pose_model.predict(face_img)
+
+        if pitch > 30:
+          text = 'Top'
+          if yaw > 30:
+            text = 'Top Right'
+          elif yaw < -30:
+            text = 'Top Left'
+        elif pitch < -30:
+          text = 'Bottom'
+          if yaw > 30:
+            text = 'Bottom Right'
+          elif yaw < -30:
+            text = 'Bottom Left'
+        elif yaw > 30:
+          text = 'Right'
+        elif yaw < -30:
+          text = 'Left'
+        else:
+          text = 'Forward'
+        
+        if verbose:
+          self.head_pose_model.draw_axis(face_img, yaw, pitch, roll)
+          print(f"Pitch: {pitch}, Yaw: {yaw}, Roll: {roll}")
+        
+        return [text, pitch, yaw, roll]
+            
+
     # Detect and track faces
     def process_video(self, video_path):
         total_frame_count = 0;
@@ -122,14 +159,14 @@ class run_analysis:
             if(self.frame_count % self.frame_window == 0):
                 try:
                     self.detect_faces(frame)
-                    cv2.imshow("Frame", frame)
+                    cv2_imshow(frame)
                 except Exception as e:
                     print(f"Error: {e}")
                     continue
-            
+
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-        
+
         cap.release()
         pbar.close()
         cv2.destroyAllWindows()
@@ -189,14 +226,14 @@ if __name__=="__main__":
             os.remove(f"{db_path}/{file}")
 
     new_analysis = run_analysis(
-        distance_metric = METRICS_LIST[1], 
+        distance_metric = METRICS_LIST[1],
         frame_window=10,
-        facial_tracker_window = 20, 
-        backend_analyze = BACKENDS[4], 
-        backend_find = BACKENDS[0], 
-        model_find = MODELS[2], 
+        facial_tracker_window = 20,
+        backend_analyze = BACKENDS[4],
+        backend_find = BACKENDS[0],
+        model_find = MODELS[2],
         db_path=db_path)
-    new_analysis.process_video('../videos/sample2.mp4')
+    new_analysis.process_video('sample2.mp4')
     new_analysis.export_results()
     plot_emotion_evolution('results.csv')
 
