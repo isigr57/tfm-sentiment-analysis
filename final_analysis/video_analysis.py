@@ -6,7 +6,9 @@ import os
 import matplotlib.pyplot as plt
 import ast
 from sixdrepnet import SixDRepNet
-from google.colab.patches import cv2_imshow
+import argparse
+import time
+import datetime
 
 BACKENDS = [
   'opencv',
@@ -39,7 +41,7 @@ METRICS_LIST = ["cosine", "euclidean", "euclidean_l2"]
 
 class run_analysis:
 
-    def __init__(self, distance_metric, frame_window ,facial_tracker_window, backend_analyze, backend_find, model_find, db_path):
+    def __init__(self, distance_metric, frame_window ,facial_tracker_window, backend_analyze, backend_find, model_find, db_path, verbose):
         self.distance_metric = distance_metric
         self.frame_window = frame_window
         self.facial_tracker_window = facial_tracker_window
@@ -50,19 +52,19 @@ class run_analysis:
         self.face_counter = 0
         self.frame_count = 0
         self.faces_iter = {}
-        self.results = pd.DataFrame(columns=['student_id', 'Frame', 'Emotions', 'Main Emotion', 'Face Position'])
+        self.verbose = verbose
+        self.results = pd.DataFrame(columns=['student_id', 'Frame', 'Emotions', 'Main Emotion', 'Region', 'Face Position'])
 
         self.head_pose_model = SixDRepNet()
 
     def detect_faces(self, frame):
 
-        analysis_results = DeepFace.analyze(frame, detector_backend=self.backend_analyze, enforce_detection=True, actions=['emotion'], silent=True)
+        analysis_results = DeepFace.analyze(frame, detector_backend=self.backend_analyze, enforce_detection=True, actions=['emotion'], silent=False)
         # store the detected faces in a directory for further processing
         for res in analysis_results:
 
-            if res['face_confidence'] != 1.0:
-                # print("Face not detected")
-                continue
+            if res['face_confidence'] < 0.7:
+                break
 
             x, y, w, h = list(res['region'].values())[:4]
             face_img = frame[y:y+h, x:x+w]
@@ -78,6 +80,7 @@ class run_analysis:
                                     detector_backend=self.backend_find,
                                     silent=True,
                                     enforce_detection=False)
+                print (dfs)
                 if(dfs[0].shape[0] == 0):
                     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
                     person = f"student_{self.face_counter}"
@@ -96,18 +99,20 @@ class run_analysis:
                 self.faces_iter[person] = {'iter': 1}
                 self.face_counter+=1
 
-            
-            head_pose_result = self.extract_head_pose(face_img, verbose=True)
+            # Extract head pose
+            head_pose_result = []
+            head_pose_result = self.extract_head_pose(face_img, paintAxis=True)
 
-            # Analyzing the emotion of the cropped face image
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (240, 0, 0), 2)
-            cv2.putText(frame, res['dominant_emotion'], (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
-            cv2.putText(frame, person, (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
-            cv2.putText(frame, head_pose_result[0], (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
+            # Painting the rectangle and putting the text
+            if(self.verbose):   
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (240, 0, 0), 2)
+                cv2.putText(frame, res['dominant_emotion'], (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
+                cv2.putText(frame, person, (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
+                cv2.putText(frame, head_pose_result[0], (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
 
             self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region'], head_pose_result]
 
-    def extract_head_pose(self, face_img, verbose=False):
+    def extract_head_pose(self, face_img, verbose=False, paintAxis=False):
         pitch, yaw, roll = self.head_pose_model.predict(face_img)
 
         if pitch > 30:
@@ -130,8 +135,10 @@ class run_analysis:
           text = 'Forward'
         
         if verbose:
-          self.head_pose_model.draw_axis(face_img, yaw, pitch, roll)
-          print(f"Pitch: {pitch}, Yaw: {yaw}, Roll: {roll}")
+          print(f"Text: {text}, Pitch: {pitch}, Yaw: {yaw}, Roll: {roll}")
+        
+        if paintAxis:
+            self.head_pose_model.draw_axis(face_img, yaw, pitch, roll)
         
         return [text, pitch, yaw, roll]
             
@@ -159,7 +166,8 @@ class run_analysis:
             if(self.frame_count % self.frame_window == 0):
                 try:
                     self.detect_faces(frame)
-                    cv2_imshow(frame)
+                    if(self.verbose):
+                        cv2.imshow("Frame", frame)
                 except Exception as e:
                     print(f"Error: {e}")
                     continue
@@ -215,26 +223,45 @@ def plot_emotion_evolution(data_path):
     plt.show()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run face analysis on a video.")
+    parser.add_argument('video_path', type=str, help='Path to the video file')
+    parser.add_argument('--output_path', type=str, default='results.csv', help='Path to the output file')
+    parser.add_argument('--db_path', type=str, default='faces_db', help='Path to the database directory')
+    parser.add_argument('--distance_metric', type=str, choices=METRICS_LIST, default='euclidean_l2', help='Distance metric for face recognition')
+    parser.add_argument('--frame_window', type=int, default=60, help='Number of frames to skip between analyses')
+    parser.add_argument('--facial_tracker_window', type=int, default=3, help='Number of times to skip for facial tracking updates')
+    parser.add_argument('--backend_analyze', type=str, choices=BACKENDS, default='fastmtcnn', help='Backend for face analysis')
+    parser.add_argument('--backend_find', type=str, choices=BACKENDS, default='opencv', help='Backend for face finding')
+    parser.add_argument('--model_find', type=str, choices=MODELS, default='Facenet512', help='Model for face finding')
+    parser.add_argument('--verbose', type=bool, default=False, help='Print verbose output and show images')
 
-    db_path = 'faces_db'
+    args = parser.parse_args()
 
-    if not os.path.exists(db_path):
-        os.makedirs(db_path)
-    else:
-        for file in os.listdir(db_path):
-            os.remove(f"{db_path}/{file}")
+    if not os.path.exists(args.db_path):
+        os.makedirs(args.db_path)
+    # else:
+    #     for file in os.listdir(args.db_path):
+    #         os.remove(f"{args.db_path}/{file}")
+
+    t=time.time()
 
     new_analysis = run_analysis(
-        distance_metric = METRICS_LIST[1],
-        frame_window=10,
-        facial_tracker_window = 20,
-        backend_analyze = BACKENDS[4],
-        backend_find = BACKENDS[0],
-        model_find = MODELS[2],
-        db_path=db_path)
-    new_analysis.process_video('sample2.mp4')
-    new_analysis.export_results()
-    plot_emotion_evolution('results.csv')
+        distance_metric=args.distance_metric,
+        frame_window=args.frame_window,
+        facial_tracker_window=args.frame_window*args.facial_tracker_window,
+        backend_analyze=args.backend_analyze,
+        backend_find=args.backend_find,
+        model_find=args.model_find,
+        db_path=args.db_path,
+        verbose=args.verbose
+    )
 
+    new_analysis.process_video(args.video_path)
+    new_analysis.export_results()
+
+    print(f"Time to process: {int(time.time() - t)} seconds")
+
+    if args.verbose:
+        plot_emotion_evolution(args.output_path)
 
