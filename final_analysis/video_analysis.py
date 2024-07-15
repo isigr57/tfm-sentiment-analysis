@@ -8,7 +8,6 @@ import ast
 from sixdrepnet import SixDRepNet
 import argparse
 import time
-import datetime
 
 BACKENDS = [
   'opencv',
@@ -63,7 +62,8 @@ class run_analysis:
         # store the detected faces in a directory for further processing
         for res in analysis_results:
 
-            if res['face_confidence'] < 0.7:
+            if res['face_confidence'] < 0.9:
+                print("Face not detected with confidence" + str(res['face_confidence']))
                 break
 
             x, y, w, h = list(res['region'].values())[:4]
@@ -80,24 +80,23 @@ class run_analysis:
                                     detector_backend=self.backend_find,
                                     silent=True,
                                     enforce_detection=False)
-                print (dfs)
-                if(dfs[0].shape[0] == 0):
-                    cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
-                    person = f"student_{self.face_counter}"
-                    self.faces_iter[person] = {'iter': 1}
-                    self.face_counter+=1
-                else:
-                    student_number = dfs[0].iloc[0].identity.split('/')[-1].replace('.jpg', '').split('_')[0]
-                    person =f"student_{student_number}"
-                    if (self.frame_count % self.facial_tracker_window == 0):
-                        cv2.imwrite(f"{self.db_path}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
-                        self.faces_iter[person]['iter']+=1
+                # if(dfs[0].shape[0] == 0):
+                #     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
+                #     person = f"student_{self.face_counter}"
+                #     self.faces_iter[person] = {'iter': 1}
+                #     self.face_counter+=1
+                # else:
+                student_number = dfs[0].iloc[0].identity.split('/')[-1].replace('.jpg', '').split('_')[0]
+                person =f"student_{student_number}"
+            #         if (self.frame_count % self.facial_tracker_window == 0):
+            #             cv2.imwrite(f"{self.db_path}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
+            #             self.faces_iter[person]['iter']+=1
 
-            else:
-                cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
-                person = f"student_{self.face_counter}"
-                self.faces_iter[person] = {'iter': 1}
-                self.face_counter+=1
+            # else:
+            #     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
+            #     person = f"student_{self.face_counter}"
+            #     self.faces_iter[person] = {'iter': 1}
+            #     self.face_counter+=1
 
             # Extract head pose
             head_pose_result = []
@@ -110,7 +109,7 @@ class run_analysis:
                 cv2.putText(frame, person, (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
                 cv2.putText(frame, head_pose_result[0], (x, y+h+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 0, 0), 2)
 
-            self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region'], head_pose_result]
+            self.results.loc[len(self.results)] = [person, self.frame_count, res['emotion'], res['dominant_emotion'], res['region'], {'pitch': float(head_pose_result[1]), 'yaw': float(head_pose_result[2]), 'roll': float(head_pose_result[3])}]
 
     def extract_head_pose(self, face_img, verbose=False, paintAxis=False):
         pitch, yaw, roll = self.head_pose_model.predict(face_img)
@@ -231,18 +230,26 @@ if __name__ == "__main__":
     parser.add_argument('--distance_metric', type=str, choices=METRICS_LIST, default='euclidean_l2', help='Distance metric for face recognition')
     parser.add_argument('--frame_window', type=int, default=60, help='Number of frames to skip between analyses')
     parser.add_argument('--facial_tracker_window', type=int, default=3, help='Number of times to skip for facial tracking updates')
-    parser.add_argument('--backend_analyze', type=str, choices=BACKENDS, default='fastmtcnn', help='Backend for face analysis')
+    parser.add_argument('--backend_analyze', type=str, choices=BACKENDS, default='retinaface', help='Backend for face analysis')
     parser.add_argument('--backend_find', type=str, choices=BACKENDS, default='opencv', help='Backend for face finding')
     parser.add_argument('--model_find', type=str, choices=MODELS, default='Facenet512', help='Model for face finding')
     parser.add_argument('--verbose', type=bool, default=False, help='Print verbose output and show images')
+    parser.add_argument('--clear_db', type=bool, default=False, help='Clear the database directory before running the analysis')
 
     args = parser.parse_args()
 
     if not os.path.exists(args.db_path):
         os.makedirs(args.db_path)
-    # else:
-    #     for file in os.listdir(args.db_path):
-    #         os.remove(f"{args.db_path}/{file}")
+
+    if args.clear_db:
+        for file in os.listdir(args.db_path):
+            os.remove(f"{args.db_path}/{file}")
+
+    try: 
+        with open(args.output_path, 'x') as file: 
+            file.write("student_id,Frame,Emotions,Main Emotion,Region,Face Position\n") 
+    except FileExistsError: 
+        print(f"The file '{args.output_path}' already exists.") 
 
     t=time.time()
 
