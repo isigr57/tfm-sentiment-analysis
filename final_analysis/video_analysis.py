@@ -80,23 +80,10 @@ class run_analysis:
                                     detector_backend=self.backend_find,
                                     silent=True,
                                     enforce_detection=False)
-                # if(dfs[0].shape[0] == 0):
-                #     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
-                #     person = f"student_{self.face_counter}"
-                #     self.faces_iter[person] = {'iter': 1}
-                #     self.face_counter+=1
-                # else:
-                student_number = dfs[0].iloc[0].identity.split('/')[-1].replace('.jpg', '').split('_')[0]
-                person =f"student_{student_number}"
-            #         if (self.frame_count % self.facial_tracker_window == 0):
-            #             cv2.imwrite(f"{self.db_path}/{student_number}_iter{self.faces_iter[person]['iter']}.jpg", face_img)
-            #             self.faces_iter[person]['iter']+=1
-
-            # else:
-            #     cv2.imwrite(f"{self.db_path}/{self.face_counter}.jpg", face_img)
-            #     person = f"student_{self.face_counter}"
-            #     self.faces_iter[person] = {'iter': 1}
-            #     self.face_counter+=1
+                
+                if len(dfs) > 0:
+                    student_number = dfs[0].iloc[0].identity.split('/')[-1].replace('.jpg', '').split('_')[0]
+                    person =f"student_{student_number}"
 
             # Extract head pose
             head_pose_result = []
