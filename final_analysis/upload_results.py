@@ -26,7 +26,7 @@ def create_session_document(file_path, teacher_id):
         'teacherId': teacher_id,
         'sessionData': {
             'mainEmotion': extractMainEmotion(data),
-            'overallAttention': float("{:.2f}".format(buildAttentionDataFrame(data)['attention'].mean())),
+            'overallAttention': float("{:.1f}".format(buildAttentionDataFrame(data)['attention'].mean())),
             'emotionRadar': radarEmotion(data),
             'attentionOverTime': attentionOverTime(data)
         }
