@@ -28,6 +28,7 @@ def create_session_document(file_path, video_path, teacher_id):
     # Create references for students
     student_references = [f'{student_id}' for student_id in student_ids]
     # Create the session document
+    attDf = buildAttentionDataFrame(data)
     session_doc = {
         'name': "Class",
         'createdAt': datetime.now(),
@@ -36,7 +37,7 @@ def create_session_document(file_path, video_path, teacher_id):
         'videoUrl': upload_video_to_storage(video_path),
         'sessionData': {
             'mainEmotion': extractMainEmotion(data),
-            'overallAttention': float("{:.1f}".format(buildAttentionDataFrame(data)['attention'].mean())),
+            'overallAttention': float("{:.1f}".format(attDf['attention'][attDf['attention'] != 0].mean())),
             'emotionRadar': radarEmotion(data),
             'attentionOverTime': attentionOverTime(data)
         },
@@ -61,9 +62,10 @@ def extractStudentsData(student_references):
         new_data = pd.DataFrame({'Frame': range(0, data['Frame'].max(), 60)})
         # merge the new data frame with the original data frame to get the presence column
         filtered_data = pd.merge(new_data, filtered_data, on='Frame', how='left')
+        attDf = buildAttentionDataFrame(filtered_data)
         students_data[student] = {
             'mainEmotion': extractMainEmotion(filtered_data),
-            'overallAttention': float("{:.1f}".format(buildAttentionDataFrame(filtered_data)['attention'].mean())),
+            'overallAttention': float("{:.1f}".format(attDf['attention'][attDf['attention'] != 0].mean())),
             'emotionRadar': radarEmotion(filtered_data),
             'attentionOverTime': attentionOverTime(filtered_data),
             'presenceOverTime': presenceOverTime(filtered_data),
@@ -73,6 +75,8 @@ def extractStudentsData(student_references):
 
 def presenceOverTime(data):
     data['presence'] = data['student_id'].notnull().astype(int)
+    data = data[['Frame', 'presence']]
+    data = data.groupby('Frame').mean().reset_index()
     # return data as [{name: 00:00:00 (from frame knowing video is at 25fps), presence: 0}, ...]
     data = [{'name': f'{int(row["Frame"]/25//60):02d}:{int(row["Frame"]/25%60):02d}:{int(row["Frame"]%25*40):02d}', 'presence': int(row['presence'])} for index, row in data.iterrows()]
     return data
@@ -87,6 +91,8 @@ def emotionsOverTime(data):
     
     # Parse the emotions column and create new columns for each emotion maintaining the frame
     data[['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']] = data['Emotions'].apply(lambda x: pd.Series(parse_emotions_json(x)))
+    data = data[['Frame', 'angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']]
+    data = data.groupby('Frame').mean().reset_index()
     # Group by frame and calculate the mean for each emotion
     # smmothed values are calculated by rolling mean of 50 frames
     data['smoothed_angry'] = data['angry'].rolling(window=50).mean()
@@ -144,8 +150,8 @@ def buildAttentionDataFrame(data):
 
 def attentionOverTime(data):
     head_pose = buildAttentionDataFrame(data)
-    # remove student id and group by frame the values are the mean when grouped by frame
     attention_over_time = head_pose.groupby('Frame').mean().reset_index()
+
     attention_over_time['smoothed_attention'] = attention_over_time['attention'].rolling(window=50).mean()
     # return data as [{name: 00:00:00 (from frame knowing video is at 25fps), attention: 0.0}, ...]
     data = [{'name': f'{int(row["Frame"]/25//60):02d}:{int(row["Frame"]/25%60):02d}:{int(row["Frame"]%25*40):02d}', 'attention': float("{:.2f}".format(row['smoothed_attention']))} for index, row in attention_over_time.iterrows()]
