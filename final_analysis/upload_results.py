@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 import sys
 import matplotlib.pyplot as plt
+import cv2
 
 def initialize_firebase():
     # Initialize Firebase Admin SDK
@@ -13,6 +14,25 @@ def initialize_firebase():
         'storageBucket': 'sapere-83929.appspot.com'
     })
     print("Firebase initialized successfully.")
+
+def upload_video_to_storage(video_path):
+    bucket = storage.bucket()
+    gs_path = video_path.split("/")[-1]
+    blob = bucket.blob(gs_path)
+    blob.upload_from_filename(video_path)
+    return f'https://firebasestorage.googleapis.com/v0/b/sapere-83929.appspot.com/o/{gs_path}?alt=media'
+
+def upload_video_miniature_to_storage(video_path):
+    #extract the first video frame
+    cap = cv2.VideoCapture(video_path)
+    ret, frame = cap.read()
+    cap.release()
+    cv2.imwrite('miniature.jpg', frame)
+    #upload the miniature to firebase storage
+    bucket = storage.bucket()
+    blob = bucket.blob('miniature.jpg')
+    blob.upload_from_filename('miniature.jpg')
+    return f'https://firebasestorage.googleapis.com/v0/b/sapere-83929.appspot.com/o/miniature.jpg?alt=media'
 
 def create_session_document(file_path, video_path, teacher_id):
     # Load the CSV file
@@ -35,6 +55,7 @@ def create_session_document(file_path, video_path, teacher_id):
         'students': student_references,
         'teacherId': teacher_id,
         'videoUrl': upload_video_to_storage(video_path),
+        'miniatureUrl': upload_video_miniature_to_storage(video_path),
         'sessionData': {
             'mainEmotion': extractMainEmotion(data),
             'overallAttention': float("{:.1f}".format(attDf['attention'][attDf['attention'] != 0].mean())),
@@ -107,14 +128,6 @@ def emotionsOverTime(data):
     # return data as [{name: 00:00:00 (from frame knowing video is at 25fps), angry: 0.0, disgust: 0.0, fear: 0.0, happy: 0.0, sad: 0.0, surprise: 0.0, neutral: 0.0}, ...]
     data = [{'name': f'{int(row["Frame"]/25//60):02d}:{int(row["Frame"]/25%60):02d}:{int(row["Frame"]%25*40):02d}', 'angry': float("{:.2f}".format(row['smoothed_angry'])), 'disgust': float("{:.2f}".format(row['smoothed_disgust'])), 'fear': float("{:.2f}".format(row['smoothed_fear'])), 'happy': float("{:.2f}".format(row['smoothed_happy'])), 'sad': float("{:.2f}".format(row['smoothed_sad'])), 'surprise': float("{:.2f}".format(row['smoothed_surprise'])), 'neutral': float("{:.2f}".format(row['smoothed_neutral']))} for index, row in data.iterrows()]
     return data;
-
-def upload_video_to_storage(video_path):
-
-    bucket = storage.bucket()
-    gs_path = video_path.split("/")[-1]
-    blob = bucket.blob(gs_path)
-    blob.upload_from_filename(video_path)
-    return f'https://firebasestorage.googleapis.com/v0/b/sapere-83929.appspot.com/o/{gs_path}?alt=media'
 
 def extractMainEmotion(data):
     emotions_count = data['Main Emotion'].value_counts()
